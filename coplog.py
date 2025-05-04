@@ -2354,6 +2354,139 @@ def size_tuning_curve(net, widths=range(1, 25, 2), stim_amp=0.4,
 
     return responses
 
+def _collect_spike_counts(
+        net,
+        modality: str = "both",      # "audio_only" | "visual_only" | "both"
+        n_trials: int = 50,
+        T: int = 15,                 # 15 macro-steps  ≈ 150 ms
+        D: int = 10,                 # 10 macro-steps  ≈ 100 ms
+        intensity: float = 0.003,
+        loc_deg: int | None = None   # None→random each trial
+):
+    """Returns an (n_neurons,) tensor with total spikes in the 0-100 ms window."""
+    n = net.n
+    device = net.device
+    spike_totals = torch.zeros(n, device=device)
+
+    for _ in range(n_trials):
+        # --- build a single-event sequence ---------------------------------
+        if loc_deg is None:
+            loc_deg = np.random.randint(0, net.space_size)
+        loc_idx = location_to_index(loc_deg, n, net.space_size)
+
+        xA = torch.zeros((1, T, n), device=device)
+        xV = torch.zeros((1, T, n), device=device)
+
+        g = make_gaussian_vector_batch_gpu(
+                torch.tensor([loc_idx], device=device),
+                n, net.sigma_in, device)[0] * intensity
+
+        for t in range(D):            # first 0-D-1 macro-steps  → 0-100 ms
+            if modality in ("audio_only", "both"):
+                xA[0, t] = g
+            if modality in ("visual_only", "both"):
+                xV[0, t] = g
+
+        # --- run the network, accumulate MSI spikes ------------------------
+        net.reset_state(batch_size=1)
+        trial_sum = torch.zeros(n, device=device)
+
+        for t in range(T):
+            net.update_all_layers_batch(xA[:, t], xV[:, t])
+            if t < D:                                     # 0-100 ms window
+                trial_sum += net._latest_sMSI[0]
+
+        spike_totals += trial_sum
+
+    return spike_totals / n_trials          # mean across trials
+
+def compute_mei_distribution(
+        net,
+        n_trials: int = 50,
+        intensity: float = 0.003,
+        plot_cdf: bool = False
+):
+    with torch.no_grad():                 # inference only
+        A  = _collect_spike_counts(net, "audio_only",  n_trials, intensity=intensity)
+        V  = _collect_spike_counts(net, "visual_only", n_trials, intensity=intensity)
+        AV = _collect_spike_counts(net, "both",        n_trials, intensity=intensity)
+
+    max_uv = torch.maximum(A, V)
+    eps = 1e-3
+    mei = (AV - max_uv) / (max_uv + eps)
+    mei_np = mei.cpu().numpy()
+
+    # ----  histogram or CDF -----------------------------------------------
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(5,4))
+    if plot_cdf:
+        sorted_vals = np.sort(mei_np)
+        cdf = np.arange(1, len(sorted_vals)+1) / len(sorted_vals)
+        plt.plot(sorted_vals, cdf, lw=2)
+        plt.ylabel("Cumulative fraction")
+    else:
+        plt.hist(mei_np, bins=40, edgecolor="k")
+        plt.ylabel("Neuron count")
+
+    pop_mean = mei_np.mean()
+    plt.axvline(pop_mean, color="red", ls="--", label=f"mean ={pop_mean:.3f}")
+    plt.xlabel("MEI  (super-additivity index)")
+    plt.title("MSI excitatory population")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    return mei_np
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def mei_vs_intensity(
+        net,
+        intensities=(0.001, 0.0015, 0.002, 0.003, 0.004, 0.005,
+                     0.0075, 0.01, 0.015, 0.02, 0.03, 0.05, 0.1, 0.2, 0.5, 0.8, 1),
+        n_trials=40,
+        plot_fraction_positive=False      # optional extra panel
+):
+    means, fracs_pos = [], []
+
+    for I in intensities:
+        mei_vals = compute_mei_distribution(
+            net,
+            n_trials=n_trials,
+            intensity=I,
+            plot_cdf=False      # skip per-intensity histogram to stay fast
+        )
+        means.append(mei_vals.mean())
+        fracs_pos.append((mei_vals > 0).mean())
+
+    # --- main figure ------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(5,4))
+    ax.plot(intensities, means, 'o-')
+    ax.set_xscale('log')
+    ax.set_xlabel('input intensity')
+    ax.set_ylabel('population mean MEI')
+    ax.set_title('MEI vs stimulus strength')
+    ax.axhline(0, ls='--', c='k')
+    ax.grid(True, which='both')
+
+    # --- optional 2nd axis: fraction super-additive -----------------------
+    if plot_fraction_positive:
+        ax2 = ax.twinx()
+        ax2.plot(intensities, fracs_pos, 's--', color='tab:orange',
+                 label='fraction (MEI > 0)')
+        ax2.set_ylabel('fraction super-additive')
+        ax2.set_ylim(0, 1)
+        ax2.legend(loc='lower right')
+
+    plt.tight_layout()
+    plt.show()
+
+    return {
+        'intensities': intensities,
+        'mean_mei': means,
+        'fraction_positive': fracs_pos
+    }
 
 
 ########################################################
@@ -2530,6 +2663,19 @@ if __name__ == "__main__":
     results = run_training()
     net = results['network']
 
+    sweep = mei_vs_intensity(net,
+                         n_trials=60,
+                         plot_fraction_positive=True)
+
+
+    mei_values = compute_mei_distribution(
+        net,              # ← your trained network instance
+        n_trials   = 75,  # more trials → smoother curve
+        intensity  = 0.2,   # pick something near sensory threshold
+        plot_cdf   = False     # True → CDF instead of histogram
+        )
+    print(f"Population mean MEI: {mei_values.mean():.3f}")
+
     # --------- NEW: temporal integration sweep ----------
     offsets = list(range(-10, 11))  # −100 … +100 ms in 10 ms steps
     res_ti = run_temporal_integration(net, offsets, loc=90, T=60, D=5)
@@ -2566,4 +2712,3 @@ if __name__ == "__main__":
     # Flash-Sound test
     offsets = list(range(21))
     visualize_flash_sound_msi(net, offsets=offsets, T=50, D=10, loc=90)
-
