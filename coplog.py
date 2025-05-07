@@ -1,10 +1,10 @@
 import math
 import numpy as np
+import torch
 %pip install matplotlib
 %pip install scipy
 %pip install statsmodels
 %pip install seaborn
-import torch
 import time
 from collections import deque
 import matplotlib.pyplot as plt
@@ -13,7 +13,6 @@ from scipy.signal import welch
 import torch, torch.nn.functional as F
 from torch import nn
 from torch.nn.utils import parametrize
-
 
 
 class Positive(nn.Module):
@@ -966,7 +965,6 @@ class MultiBatchAudVisMSINetworkTime(nn.Module):
             # shapes: new_sMi  (B, n_inh)   post_i_trace  (B, n)
 
             if self.allow_inhib_plasticity:
-
                 pre_i = new_sMi  # presyn spikes
                 post_j = self.post_i_trace  # running postsyn trace
 
@@ -1362,7 +1360,6 @@ class MultiBatchAudVisMSINetworkTime(nn.Module):
         self.W_inV_inh.mul_(z)
         self.W_msiInh2Exc_GABA.mul_(z)
         self.allow_inhib_plasticity = not enable
-
 
 
 ########################################################
@@ -2006,16 +2003,16 @@ def perturb_inhibition_sweep(
     for g in scales:
         # scale every inhibitory knob
         net.W_msiInh2Exc_GABA = W_gate0 * g
-        net.W_inA_inh         = W_A0     * g
-        net.W_inV_inh         = W_V0     * g
-        net.g_GABA            = g_gaba0  * g
+        net.W_inA_inh = W_A0 * g
+        net.W_inV_inh = W_V0 * g
+        net.g_GABA = g_gaba0 * g
 
         if rescale_input:
             net.auto_calibrate_input_gain(target=100, max_iter=6)
 
         # three errors
-        e_b = net.evaluate_batch(120, 'both',        batch_size=batch_size)
-        e_a = net.evaluate_batch(120, 'audio_only',  batch_size=batch_size)
+        e_b = net.evaluate_batch(120, 'both', batch_size=batch_size)
+        e_a = net.evaluate_batch(120, 'audio_only', batch_size=batch_size)
         e_v = net.evaluate_batch(120, 'visual_only', batch_size=batch_size)
 
         err_b.append(e_b)
@@ -2028,12 +2025,14 @@ def perturb_inhibition_sweep(
     net.g_GABA = g_gaba0
 
     # figure
-    fig, ax1 = plt.subplots(figsize=(6,4))
+    fig, ax1 = plt.subplots(figsize=(6, 4))
     ax1.plot(scales, err_b, 'o-', label='Bimodal err')
-    ax1.plot(scales, err_a, '^-', label='Audio err',  alpha=0.6)
+    ax1.plot(scales, err_a, '^-', label='Audio err', alpha=0.6)
     ax1.plot(scales, err_v, 'v-', label='Visual err', alpha=0.6)
     ax1.set_xlabel('Inhibitory weight scale')
-    ax1.set_ylabel('Error (deg)'); ax1.grid(True); ax1.legend()
+    ax1.set_ylabel('Error (deg)');
+    ax1.grid(True);
+    ax1.legend()
 
     ax2 = ax1.twinx()
     ax2.plot(scales, gain, 's--', color='tab:red', label='MSI benefit')
@@ -2041,12 +2040,12 @@ def perturb_inhibition_sweep(
     ax2.set_ylabel('MSI benefit (deg)')
     ax2.legend(loc='lower right')
 
-    fig.tight_layout(); plt.show()
+    fig.tight_layout();
+    plt.show()
 
     return {'scale': scales, 'bimodal_err': err_b,
             'audio_err': err_a, 'visual_err': err_v,
             'msi_gain': gain}
-
 
 
 ###############################################################################
@@ -2229,6 +2228,7 @@ def inverse_effectiveness_check(net, intensities=(0.002, 0.0022, 0.0025, 0.0028,
     plt.show()
     return res
 
+
 # ─────────────────────────────────────────────────────────────
 #  ASSAY A – RF-SHARPENING BY SURROUND
 # ─────────────────────────────────────────────────────────────
@@ -2249,6 +2249,7 @@ def rf_width_probe(net, stim_intensity=0.3, n_steps=5):
         widths.append((hill > 0.5 * hill.max()).sum().item())
     return float(np.mean(widths))
 
+
 # ─────────────────────────────────────────────────────────────
 #  ASSAY B – WINNER-TAKE-ALL  (hill-integrated read-out)
 # ─────────────────────────────────────────────────────────────
@@ -2262,7 +2263,7 @@ def wta_probe(net, sep_deg=20, strong_amp=1.0, weak_amp=0.5,
     window = ±neurons around each centre that are summed (default 2).
     """
     # 1) build the two hills ------------------------------------------------
-    mid    = net.n // 2
+    mid = net.n // 2
     offset = int(round(sep_deg / (net.space_size / net.n)))
     idx1, idx2 = mid, (mid + offset) % net.n
 
@@ -2270,36 +2271,35 @@ def wta_probe(net, sep_deg=20, strong_amp=1.0, weak_amp=0.5,
                                         net.n, 5.0, net.device)[0] * strong_amp
     g2 = make_gaussian_vector_batch_gpu(torch.tensor([idx2], device=net.device),
                                         net.n, 5.0, net.device)[0] * weak_amp
-    stim = (g1 + g2).unsqueeze(0)            # add batch axis
+    stim = (g1 + g2).unsqueeze(0)  # add batch axis
 
     # 2) temporarily weaken ST-depression so the strong hill
     #    doesn't burn out before the read-out ------------------------------
     u_save, v_save = net.u_a.clone(), net.u_v.clone()
-    net.u_a.fill_(0.05);   net.u_v.fill_(0.05)
+    net.u_a.fill_(0.05);
+    net.u_v.fill_(0.05)
 
     # 3) run the simulation -----------------------------------------------
-        # 3) run & ACCUMULATE spikes over time  ──────────────────────────────
+    # 3) run & ACCUMULATE spikes over time  ──────────────────────────────
     net.reset_state(1)
-    hist = torch.zeros(net.n, device=net.device)   # NEW
+    hist = torch.zeros(net.n, device=net.device)  # NEW
 
     for _ in range(n_steps):
         net.update_all_layers_batch(stim, stim)
-        hist += net._latest_sMSI[0]                # accumulate
+        hist += net._latest_sMSI[0]  # accumulate
 
     # 4) restore STP ------------------------------------------------------
 
-
     # 4) restore STP parameters -------------------------------------------
-    net.u_a.copy_(u_save);  net.u_v.copy_(v_save)
+    net.u_a.copy_(u_save);
+    net.u_v.copy_(v_save)
 
     # 5) integrate spikes in ±window neurons ------------------------------
     def hill_sum(idx):
-        rng = [(idx+i) % net.n for i in range(-window, window+1)]
+        rng = [(idx + i) % net.n for i in range(-window, window + 1)]
         return hist[rng].sum().item()
 
-
     return hill_sum(idx1), hill_sum(idx2)
-
 
 
 # ─────────────────────────────────────────────────────────────
@@ -2347,7 +2347,7 @@ def size_tuning_curve(net, widths=range(1, 25, 2), stim_amp=0.4,
 
         for _ in range(n_steps):
             net.update_all_layers_batch(stim, stim)
-            hist += net._latest_sMSI[0]          # accumulate sub-steps
+            hist += net._latest_sMSI[0]  # accumulate sub-steps
 
         # 3) store summed response ----------------------------------------
         if window is None:
@@ -2362,34 +2362,34 @@ def size_tuning_curve(net, widths=range(1, 25, 2), stim_amp=0.4,
 def inverse_effectiveness_curve(
         net,
         intensities=(0.002, 0.0022, 0.0025, 0.0028, 0.003, 0.0032,
-                                                  0.0035, 0.0038, 0.004, 0.0042, 0.0045,
-                                                  0.0047, 0.005, 0.0052, 0.0055, 0.0057, 0.0057,
-                                                  0.006, 0.0062, 0.0065, 0.0067, 0.007, 0.0072, 0.0075, 0.0077,
-                                                  0.008, 0.0082, 0.0085, 0.0087,
-                                                  0.009, 0.0092, 0.0094, 0.0096, 0.0098, 0.01, 0.0102, 0.0105,
-                                                  0.0107, 0.011, 0.0112, 0.0115, 0.0118, 0.012, 0.0122, 0.0125,
-                                                  0.0128, 0.013, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055,
-                                                  0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1, 0.15,
-                                                  0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7,
-                                                  0.75, 0.8, 0.85, 0.9, 0.95, 1),
+                     0.0035, 0.0038, 0.004, 0.0042, 0.0045,
+                     0.0047, 0.005, 0.0052, 0.0055, 0.0057, 0.0057,
+                     0.006, 0.0062, 0.0065, 0.0067, 0.007, 0.0072, 0.0075, 0.0077,
+                     0.008, 0.0082, 0.0085, 0.0087,
+                     0.009, 0.0092, 0.0094, 0.0096, 0.0098, 0.01, 0.0102, 0.0105,
+                     0.0107, 0.011, 0.0112, 0.0115, 0.0118, 0.012, 0.0122, 0.0125,
+                     0.0128, 0.013, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055,
+                     0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1, 0.15,
+                     0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7,
+                     0.75, 0.8, 0.85, 0.9, 0.95, 1),
         n_sequences=40,
         batch_size=32,
         layer='msi',
         use_max=True,
-        style='line'           # 'scatter' or 'line'
+        style='line'  # 'scatter' or 'line'
 ):
     uni_strength, mei = [], []
 
     for I in intensities:
         rates = {
             c: calculate_spike_rates_gpu(
-                    net, n_sequences, c,
-                    stimulus_intensity=I,
-                    batch_size=batch_size)[layer]
+                net, n_sequences, c,
+                stimulus_intensity=I,
+                batch_size=batch_size)[layer]
             for c in ('both', 'audio_only', 'visual_only')
         }
         denom = max(rates['audio_only'], rates['visual_only']) if use_max \
-                else 0.5*(rates['audio_only'] + rates['visual_only'])
+            else 0.5 * (rates['audio_only'] + rates['visual_only'])
         uni_strength.append(denom)
         mei.append((rates['both'] - denom) / (denom + 1e-9))
 
@@ -2398,7 +2398,7 @@ def inverse_effectiveness_curve(
     x = np.array(uni_strength)[idx]
     y = np.array(mei)[idx]
 
-    plt.figure(figsize=(4.2,3.3))
+    plt.figure(figsize=(4.2, 3.3))
     if style == 'scatter':
         plt.scatter(x, y, 40, c='k')
     else:
@@ -2414,6 +2414,7 @@ def inverse_effectiveness_curve(
     return dict(intensity=list(intensities),
                 uni=list(x), mei=list(y))
 
+
 # ------------------------------------------------------------------
 # Helper #1: build a clean A-only / V-only / A+V pulse batch
 # ------------------------------------------------------------------
@@ -2428,14 +2429,14 @@ def build_pulse_batch(net, intensity, pulse_len=15, start=5):
     xV = torch.zeros((1, T, net.n), device=net.device)
 
     centre = net.n // 2
-    gauss  = make_gaussian_vector_batch_gpu(
-                torch.tensor([centre], device=net.device),
-                net.n, net.sigma_in, net.device
-             )[0] * intensity
+    gauss = make_gaussian_vector_batch_gpu(
+        torch.tensor([centre], device=net.device),
+        net.n, net.sigma_in, net.device
+    )[0] * intensity
 
     for t in range(start, start + pulse_len):
-        xA[0, t] = gauss       # audio channel
-        xV[0, t] = gauss       # visual channel
+        xA[0, t] = gauss  # audio channel
+        xV[0, t] = gauss  # visual channel
 
     return xA, xV
 
@@ -2452,8 +2453,8 @@ def pulse_rate(net, xA, xV, layer='msi'):
     B, T, _ = xA.shape
     net.reset_state(B)
 
-    spike_sum   = torch.zeros(B, device=net.device)
-    active_steps = torch.zeros(B, device=net.device)   # how many frames carry input
+    spike_sum = torch.zeros(B, device=net.device)
+    active_steps = torch.zeros(B, device=net.device)  # how many frames carry input
 
     for t in range(T):
         net.update_all_layers_batch(xA[:, t], xV[:, t])
@@ -2476,8 +2477,8 @@ def pulse_rate(net, xA, xV, layer='msi'):
 
     # convert to spikes · neuron⁻¹ · s⁻¹
     # (n_substeps × dt  = 1 ms, so n_substeps steps = 1 ms)
-    total_ms = active_steps * net.n_substeps * net.dt    # ms
-    total_ms[total_ms == 0] = 1e-6                       # avoid /0
+    total_ms = active_steps * net.n_substeps * net.dt  # ms
+    total_ms[total_ms == 0] = 1e-6  # avoid /0
     rate = (spike_sum / (net.n * total_ms * 1e-3)).cpu().numpy()  # → Hz
 
     # when B == 1 just return a scalar
@@ -2497,22 +2498,22 @@ def pulse_rate(net, xA, xV, layer='msi'):
 # ──────────────────────────────────────────────────────────────
 def clean_inverse_effectiveness_curve(net,
                                       intensities=(0.002, 0.0022, 0.0025, 0.0028, 0.003, 0.0032,
-                                                  0.0035, 0.0038, 0.004, 0.0042, 0.0045,
-                                                  0.0047, 0.005, 0.0052, 0.0055, 0.0057, 0.0057,
-                                                  0.006, 0.0062, 0.0065, 0.0067, 0.007, 0.0072, 0.0075, 0.0077,
-                                                  0.008, 0.0082, 0.0085, 0.0087,
-                                                  0.009, 0.0092, 0.0094, 0.0096, 0.0098, 0.01, 0.0102, 0.0105,
-                                                  0.0107, 0.011, 0.0112, 0.0115, 0.0118, 0.012, 0.0122, 0.0125,
-                                                  0.0128, 0.013, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055,
-                                                  0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1, 0.15,
-                                                  0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7,
-                                                  0.75, 0.8, 0.85, 0.9, 0.95, 1),
+                                                   0.0035, 0.0038, 0.004, 0.0042, 0.0045,
+                                                   0.0047, 0.005, 0.0052, 0.0055, 0.0057, 0.0057,
+                                                   0.006, 0.0062, 0.0065, 0.0067, 0.007, 0.0072, 0.0075, 0.0077,
+                                                   0.008, 0.0082, 0.0085, 0.0087,
+                                                   0.009, 0.0092, 0.0094, 0.0096, 0.0098, 0.01, 0.0102, 0.0105,
+                                                   0.0107, 0.011, 0.0112, 0.0115, 0.0118, 0.012, 0.0122, 0.0125,
+                                                   0.0128, 0.013, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055,
+                                                   0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1, 0.15,
+                                                   0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7,
+                                                   0.75, 0.8, 0.85, 0.9, 0.95, 1),
                                       pulse_len=15,
                                       start=5,
                                       layer='msi',
-                                      batch_cap=256,          # split if > this
+                                      batch_cap=256,  # split if > this
                                       progress=True,
-                                      assay_substeps=25):     # <= original 100
+                                      assay_substeps=25):  # <= original 100
     """
     Fast MEI sweep with live progress and proper CUDA-sync.
 
@@ -2528,18 +2529,18 @@ def clean_inverse_effectiveness_curve(net,
     assay_substeps : temporarily overrides net.n_substeps while running
     """
     # ─── PREP ────────────────────────────────────────────────────────────
-    conds   = ('both', 'audio_only', 'visual_only')
-    n_cond  = len(conds)
+    conds = ('both', 'audio_only', 'visual_only')
+    n_cond = len(conds)
     n_total = len(intensities)
 
     # save current model flags
-    old_training   = net.training
+    old_training = net.training
     old_plasticity = net.allow_inhib_plasticity
-    old_substeps   = net.n_substeps
+    old_substeps = net.n_substeps
 
     net.eval()
     net.allow_inhib_plasticity = False
-    net.n_substeps             = assay_substeps
+    net.n_substeps = assay_substeps
 
     device = net.device
 
@@ -2547,35 +2548,35 @@ def clean_inverse_effectiveness_curve(net,
     def show(done, total, bar=40):
         pct = int(100 * done / total)
         filled = int(bar * pct / 100)
-        print(f"\r[{'='*filled:<{bar}}] {pct:3d}%", end='', flush=True)
+        print(f"\r[{'=' * filled:<{bar}}] {pct:3d}%", end='', flush=True)
 
     # one GPU chunk
     def run_chunk(int_chunk):
         n_int = len(int_chunk)
-        B     = n_int * n_cond
-        T     = start + pulse_len + 5
+        B = n_int * n_cond
+        T = start + pulse_len + 5
 
         # build (xA,xV)
         xA = torch.zeros((B, T, net.n), device=device)
         xV = torch.zeros_like(xA)
 
         centre = net.n // 2
-        base   = make_gaussian_vector_batch_gpu(
-                   torch.tensor([centre], device=device),
-                   net.n, net.sigma_in, device
-                 )[0]
+        base = make_gaussian_vector_batch_gpu(
+            torch.tensor([centre], device=device),
+            net.n, net.sigma_in, device
+        )[0]
 
         for i, I in enumerate(int_chunk):
             for j, c in enumerate(conds):
                 b = i * n_cond + j
                 if c != 'visual_only':
-                    xA[b, start:start+pulse_len] = base * I
+                    xA[b, start:start + pulse_len] = base * I
                 if c != 'audio_only':
-                    xV[b, start:start+pulse_len] = base * I
+                    xV[b, start:start + pulse_len] = base * I
 
         keep = torch.zeros(T, dtype=torch.bool, device=device)
-        keep[start:start+pulse_len] = True
-        active_ms = keep.sum() * net.n_substeps * net.dt   # ms
+        keep[start:start + pulse_len] = True
+        active_ms = keep.sum() * net.n_substeps * net.dt  # ms
 
         # forward
         net.reset_state(B)
@@ -2595,7 +2596,7 @@ def clean_inverse_effectiveness_curve(net,
                 else:
                     raise ValueError(f"bad layer: {layer}")
 
-        rates = spike_sum / (net.n * active_ms * 1e-3)        # Hz
+        rates = spike_sum / (net.n * active_ms * 1e-3)  # Hz
         return rates.reshape(n_int, n_cond)
 
     # ─── MAIN LOOP ───────────────────────────────────────────────────────
@@ -2605,7 +2606,7 @@ def clean_inverse_effectiveness_curve(net,
     while idx < n_total:
         chunk = intensities[idx:idx + batch_cap]
         rates_chunks.append(run_chunk(chunk))
-        torch.cuda.synchronize(device)        # make sure this chunk finished
+        torch.cuda.synchronize(device)  # make sure this chunk finished
         idx += len(chunk)
         if progress: show(idx, n_total)
 
@@ -2614,15 +2615,17 @@ def clean_inverse_effectiveness_curve(net,
         print("\ncollecting results …", end='', flush=True)
     torch.cuda.synchronize(device)
 
-    rates = torch.cat(rates_chunks, 0)         # (N × 3) on GPU
-    a = rates[:, 1];  v = rates[:, 2];  b = rates[:, 0]
+    rates = torch.cat(rates_chunks, 0)  # (N × 3) on GPU
+    a = rates[:, 1];
+    v = rates[:, 2];
+    b = rates[:, 0]
     denom = torch.maximum(a, v)
-    mei   = (b - denom) / (denom + 1e-9)
+    mei = (b - denom) / (denom + 1e-9)
 
     # ─── RESTORE MODEL FLAGS ─────────────────────────────────────────────
-    net.training               = old_training
+    net.training = old_training
     net.allow_inhib_plasticity = old_plasticity
-    net.n_substeps             = old_substeps
+    net.n_substeps = old_substeps
 
     if progress:
         print(" done.")
@@ -2630,6 +2633,7 @@ def clean_inverse_effectiveness_curve(net,
     return dict(intensity=list(intensities),
                 uni=denom.cpu().tolist(),
                 mei=mei.cpu().tolist())
+
 
 import numpy as np
 import torch
@@ -2642,6 +2646,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 
+
 def inverse_effectiveness_curve_final(
         net,
         intensities=(0.002, 0.003, 0.004, 0.006, 0.008, 0.01, 0.015,
@@ -2650,9 +2655,9 @@ def inverse_effectiveness_curve_final(
         start=5,
         layer='msi',
         use_max=True,
-        n_reps=3,              # NEW – repeat each intensity n_reps times
-        silent_floor=1.0,      # NEW – ≤1 Hz treated as silent
-        invert_x=True,         # keep the classic inverted axis
+        n_reps=3,  # NEW – repeat each intensity n_reps times
+        silent_floor=1.0,  # NEW – ≤1 Hz treated as silent
+        invert_x=True,  # keep the classic inverted axis
         show_progress=True,
         make_plot=True):
     """
@@ -2676,17 +2681,17 @@ def inverse_effectiveness_curve_final(
 
         # ---- repeat & accumulate --------------------------------------
         for _ in range(n_reps):
-            xA_both,  xV_both  = build_pulse_batch(net, I, pulse_len, start)
+            xA_both, xV_both = build_pulse_batch(net, I, pulse_len, start)
 
             xA_audio, xV_audio = build_pulse_batch(net, I, pulse_len, start)
             xV_audio.zero_()
 
-            xA_vis,   xV_vis   = build_pulse_batch(net, I, pulse_len, start)
+            xA_vis, xV_vis = build_pulse_batch(net, I, pulse_len, start)
             xA_vis.zero_()
 
             rates_a.append(pulse_rate(net, xA_audio, xV_audio, layer))
-            rates_v.append(pulse_rate(net, xA_vis,   xV_vis,   layer))
-            rates_b.append(pulse_rate(net, xA_both,  xV_both,  layer))
+            rates_v.append(pulse_rate(net, xA_vis, xV_vis, layer))
+            rates_b.append(pulse_rate(net, xA_both, xV_both, layer))
 
         r_a = np.mean(rates_a)
         r_v = np.mean(rates_v)
@@ -2706,7 +2711,7 @@ def inverse_effectiveness_curve_final(
         print()  # newline after last bar
 
     uni_strength = np.asarray(uni_strength)
-    mei          = np.asarray(mei)
+    mei = np.asarray(mei)
 
     # sort left→right by uni-rate for a clean line
     order = np.argsort(uni_strength)
@@ -2727,23 +2732,25 @@ def inverse_effectiveness_curve_final(
 
     return dict(intensity=kept_I, uni=uni_strength.tolist(), mei=mei.tolist())
 
+
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def run_inverse_effectiveness_test(
-    net,
-    intensities=[0.002, 0.003, 0.004, 0.006, 0.008, 0.01, 0.015,
+        net,
+        intensities=[0.002, 0.003, 0.004, 0.006, 0.008, 0.01, 0.015,
                      0.02, 0.03, 0.05, 0.07, 0.1, 0.2, 0.3, 0.5, 1.0],
-    n_seq=50,
-    batch_size=32,
-    do_plot=True
+        n_seq=50,
+        batch_size=32,
+        do_plot=True
 ):
     """
-    Measures the network's MSI (multisensory integration) at different stimulus 
+    Measures the network's MSI (multisensory integration) at different stimulus
     intensities and plots an 'inverse-effectiveness' curve:
       - x-axis: unimodal strength (avg of A-only & V-only firing rates).
       - y-axis: MEI = (Bimodal - UnimodalMean) / UnimodalMean
-    
+
     Args:
       net          : Your MultiBatchAudVisMSINetworkTime (or similar).
       intensities  : List of stimulus intensities to test.
@@ -2760,8 +2767,8 @@ def run_inverse_effectiveness_test(
         'unimodal_mean' : average of audio and visual rates
         'MEI'           : (bimodal - uni_mean) / uni_mean
     """
-    audio_rates   = []
-    visual_rates  = []
+    audio_rates = []
+    visual_rates = []
     bimodal_rates = []
 
     # 1) For each intensity, measure MSI spiking in audio-only, visual-only, and both
@@ -2794,8 +2801,8 @@ def run_inverse_effectiveness_test(
         visual_rates.append(v_rate)
         bimodal_rates.append(b_rate)
 
-    audio_rates   = np.array(audio_rates)
-    visual_rates  = np.array(visual_rates)
+    audio_rates = np.array(audio_rates)
+    visual_rates = np.array(visual_rates)
     bimodal_rates = np.array(bimodal_rates)
 
     # 2) Compute unimodal-mean and MEI
@@ -2823,7 +2830,7 @@ def run_inverse_effectiveness_test(
     }
 
 
-def run_av_pair(net, aud_deg=0, vis_deg=0,  *,
+def run_av_pair(net, aud_deg=0, vis_deg=0, *,
                 duration=30,  # macro-steps (≈3 ms each if dt=0.1 ms & n_substeps=100)
                 intensity=0.4,
                 return_error=False):
@@ -2831,18 +2838,18 @@ def run_av_pair(net, aud_deg=0, vis_deg=0,  *,
        MSI population activity or localisation error.
     """
     # --- build the two Gaussians ----------------------------------------
-    idx_a = location_to_index(aud_deg,  net.n, net.space_size)
+    idx_a = location_to_index(aud_deg, net.n, net.space_size)
     idx_v = location_to_index(vis_deg % net.space_size,
                               net.n, net.space_size)
 
     gA = make_gaussian_vector_batch_gpu(
-            torch.tensor([idx_a], device=net.device),
-            net.n, net.sigma_in, net.device)[0] * intensity
+        torch.tensor([idx_a], device=net.device),
+        net.n, net.sigma_in, net.device)[0] * intensity
     gV = make_gaussian_vector_batch_gpu(
-            torch.tensor([idx_v], device=net.device),
-            net.n, net.sigma_in, net.device)[0] * intensity
+        torch.tensor([idx_v], device=net.device),
+        net.n, net.sigma_in, net.device)[0] * intensity
 
-    xA = gA.unsqueeze(0)         # add batch axis
+    xA = gA.unsqueeze(0)  # add batch axis
     xV = gV.unsqueeze(0)
 
     # --- run -------------------------------------------------------------
@@ -2850,19 +2857,21 @@ def run_av_pair(net, aud_deg=0, vis_deg=0,  *,
     pop_spikes = 0.0
     for _ in range(duration):
         net.update_all_layers_batch(xA, xV)
-        pop_spikes += net._latest_sMSI.sum().item()   # all neurons, all sub-steps
+        pop_spikes += net._latest_sMSI.sum().item()  # all neurons, all sub-steps
 
-    if return_error:                                # localisation error instead
+    if return_error:  # localisation error instead
         sM = net._latest_sMSI[0]
         raw = torch.matmul(net.W_msi2out, sM) + net.b_out
         pred_idx = torch.argmax(torch.clamp(raw, min=0)).item()
         pred_deg = index_to_location(pred_idx, net.n, net.space_size)
-        err = abs(pred_deg - aud_deg)                # unsigned error
+        err = abs(pred_deg - aud_deg)  # unsigned error
         return err
     else:
         return pop_spikes
 
+
 import numpy as np, scipy.optimize as opt
+
 
 def spatial_disparity_tuning(net, *,
                              aud_deg=0,
@@ -2879,37 +2888,40 @@ def spatial_disparity_tuning(net, *,
         vals.append(resp)
 
     # --- Gaussian fit  r(d) = b + A·exp(-(d-μ)²/(2σ²))  ----------------
-    def gauss(d, A, mu, sigma, b):          # fit centre & baseline too
-        return b + A * np.exp(-0.5*((d - mu)/sigma)**2)
+    def gauss(d, A, mu, sigma, b):  # fit centre & baseline too
+        return b + A * np.exp(-0.5 * ((d - mu) / sigma) ** 2)
 
-    p0 = [max(vals)-min(vals), 0, 15, min(vals)]     # rough init
+    p0 = [max(vals) - min(vals), 0, 15, min(vals)]  # rough init
     popt, _ = opt.curve_fit(gauss, disparities, vals, p0=p0)
     A, mu, sigma, b = popt
 
     return dict(disparity=np.array(disparities),
                 response=np.array(vals),
                 sigma=sigma,
-                fit=lambda d: gauss(d,*popt))
+                fit=lambda d: gauss(d, *popt))
+
 
 # unchanged helper ───────────────────────────────────────────
 import numpy as np
 import torch
 
+
 # helper – unchanged
 def first_spike_latencies(raster, dt=0.1):
-    fired     = (torch.cumsum(raster, 0) > 0).float()
+    fired = (torch.cumsum(raster, 0) > 0).float()
     first_idx = torch.argmax(fired, 0)
-    silent    = raster.sum(0) == 0
+    silent = raster.sum(0) == 0
     first_idx[silent] = -1
     lat = first_idx.float() * dt
     lat[silent] = float('nan')
     return lat.cpu().numpy()
 
+
 # ------------------------------------------------------------------
 #  latency_panel  (with spatial jitter)
 # ------------------------------------------------------------------
 def latency_panel(net,
-                  *,                       # keyword-only args
+                  *,  # keyword-only args
                   stimulus_intensity=None,
                   intensities=None,
                   D=15, start_t=5,
@@ -2917,8 +2929,8 @@ def latency_panel(net,
                   max_macro=40,
                   dt=0.1,
                   jitter_radius=3,
-                  make_plot=True     # ⬅ NEW (so extra arg is accepted)
-):
+                  make_plot=True  # ⬅ NEW (so extra arg is accepted)
+                  ):
     # ----------------------------------------------------------
     # 1) choose intensity
     # ----------------------------------------------------------
@@ -2928,11 +2940,11 @@ def latency_panel(net,
         if intensities is None:
             intensities = np.arange(1e-4, 0.0101, 1e-4)
 
-        centre  = net.n // 2
-        base    = make_gaussian_vector_batch_gpu(
-                     torch.tensor([centre], device=net.device),
-                     net.n, net.sigma_in, net.device
-                  )[0]
+        centre = net.n // 2
+        base = make_gaussian_vector_batch_gpu(
+            torch.tensor([centre], device=net.device),
+            net.n, net.sigma_in, net.device
+        )[0]
 
         chosen_I = None
         for I in intensities:
@@ -2943,9 +2955,9 @@ def latency_panel(net,
                 xV = torch.zeros_like(xA)
                 pulse = base * I
                 if cond in ("A", "AV"):
-                    xA[0, start_t:start_t+D] = pulse
+                    xA[0, start_t:start_t + D] = pulse
                 if cond in ("V", "AV"):
-                    xV[0, start_t:start_t+D] = pulse
+                    xV[0, start_t:start_t + D] = pulse
 
                 net.reset_state(1)
                 spiked = False
@@ -2984,22 +2996,21 @@ def latency_panel(net,
     return results
 
 
-
-
 import numpy as np
 import matplotlib.pyplot as plt
+
 
 def plot_latency_violin(lat_dict):
     fig, ax = plt.subplots(figsize=(6, 4))
 
     data, labels = [], []
     for lab, arr in lat_dict.items():
-        if lab == "chosen_I":          # ← skip the scalar
+        if lab == "chosen_I":  # ← skip the scalar
             continue
-        arr = np.asarray(arr)          # tolerate lists
+        arr = np.asarray(arr)  # tolerate lists
         flat = arr.flatten()
-        flat = flat[~np.isnan(flat)]   # drop NaNs
-        if flat.size:                  # only keep non-empty
+        flat = flat[~np.isnan(flat)]  # drop NaNs
+        if flat.size:  # only keep non-empty
             data.append(flat)
             labels.append(lab)
 
@@ -3025,28 +3036,28 @@ def _latencies_for_intensity(
     Audio-only, Visual-only and Audio+Visual at a single intensity *I*.
     """
     centre = net.n // 2
-    conds  = ("A", "V", "AV")
-    out    = {c: [] for c in conds}
+    conds = ("A", "V", "AV")
+    out = {c: [] for c in conds}
 
     pulse0 = make_gaussian_vector_batch_gpu(
         torch.tensor([centre], device=net.device),
         net.n, net.sigma_in, net.device
-    )[0] * I                      # base Gaussian, scaled
+    )[0] * I  # base Gaussian, scaled
 
     for cond in conds:
         for _ in range(batches):
-            T   = start_t + D + 1
-            xA  = torch.zeros((seq_per_batch, T, net.n), device=net.device)
-            xV  = torch.zeros_like(xA)
+            T = start_t + D + 1
+            xA = torch.zeros((seq_per_batch, T, net.n), device=net.device)
+            xV = torch.zeros_like(xA)
 
             # one random spatial jitter per sequence
             for s in range(seq_per_batch):
-                jitter   = np.random.randint(-jitter_radius, jitter_radius+1)
+                jitter = np.random.randint(-jitter_radius, jitter_radius + 1)
                 centre_s = (centre + jitter) % net.n
-                pulse_s  = torch.roll(pulse0, shifts=jitter, dims=0)  # fast shift
+                pulse_s = torch.roll(pulse0, shifts=jitter, dims=0)  # fast shift
 
-                if cond in ("A", "AV"): xA[s, start_t:start_t+D] = pulse_s
-                if cond in ("V", "AV"): xV[s, start_t:start_t+D] = pulse_s
+                if cond in ("A", "AV"): xA[s, start_t:start_t + D] = pulse_s
+                if cond in ("V", "AV"): xV[s, start_t:start_t + D] = pulse_s
 
             net.reset_state(seq_per_batch)
             sub_hist = []
@@ -3058,45 +3069,45 @@ def _latencies_for_intensity(
                 )
                 sub_hist.append(vd["sM_substeps"])
 
-            raster = torch.cat(sub_hist, 0)               # (sub, B, n)
-            lat    = first_spike_latencies(raster, dt=dt) # (B, n)
+            raster = torch.cat(sub_hist, 0)  # (sub, B, n)
+            lat = first_spike_latencies(raster, dt=dt)  # (B, n)
             out[cond].append(lat)
 
-        out[cond] = np.concatenate(out[cond], 0)          # (seq_per_batch*batches, n)
+        out[cond] = np.concatenate(out[cond], 0)  # (seq_per_batch*batches, n)
 
     return out["A"], out["V"], out["AV"]
+
 
 @torch.no_grad()
 def latency_vs_intensity_gpu(
         net,
         intensities,
-        reps           = 64,
-        jitter_radius  = 3,
-        D              = 15,
-        start_t        = 5,
-        dt             = 0.1,
-        conds          = ("A", "V", "AV"),
-        batch_cap      = 2048,
-        return_raw     = False):
-
-    device   = net.device
-    n_int    = len(intensities)
-    n_cond   = len(conds)
-    B_tot    = n_int * n_cond * reps
-    n_sub    = net.n_substeps
+        reps=64,
+        jitter_radius=3,
+        D=15,
+        start_t=5,
+        dt=0.1,
+        conds=("A", "V", "AV"),
+        batch_cap=2048,
+        return_raw=False):
+    device = net.device
+    n_int = len(intensities)
+    n_cond = len(conds)
+    B_tot = n_int * n_cond * reps
+    n_sub = net.n_substeps
 
     # ---------------- build stimuli -------------------------------------
     centre = net.n // 2
-    base   = make_gaussian_vector_batch_gpu(
-                torch.tensor([centre], device=device),
-                net.n, net.sigma_in, device
-             )[0]
+    base = make_gaussian_vector_batch_gpu(
+        torch.tensor([centre], device=device),
+        net.n, net.sigma_in, device
+    )[0]
 
-    T  = start_t + D + 1
+    T = start_t + D + 1
     xA = torch.zeros((B_tot, T, net.n), device=device)
     xV = torch.zeros_like(xA)
 
-    shifts = torch.randint(-jitter_radius, jitter_radius+1,
+    shifts = torch.randint(-jitter_radius, jitter_radius + 1,
                            (n_int, reps), device=device)
 
     for i, I in enumerate(intensities):
@@ -3105,17 +3116,17 @@ def latency_vs_intensity_gpu(
             pulse = torch.roll(gI, int(shifts[i, r].item()))
             for c_idx, c in enumerate(conds):
                 b = ((i * n_cond) + c_idx) * reps + r
-                if c != "V": xA[b, start_t:start_t+D] = pulse
-                if c != "A": xV[b, start_t:start_t+D] = pulse
+                if c != "V": xA[b, start_t:start_t + D] = pulse
+                if c != "A": xV[b, start_t:start_t + D] = pulse
 
     # ---------------- run in manageable chunks --------------------------
     first_idx = torch.full((B_tot, net.n), -1,
                            dtype=torch.int16, device=device)
 
     for b0 in range(0, B_tot, batch_cap):
-        b1   = min(b0 + batch_cap, B_tot)
-        bs   = b1 - b0
-        sel  = slice(b0, b1)
+        b1 = min(b0 + batch_cap, B_tot)
+        bs = b1 - b0
+        sel = slice(b0, b1)
 
         net.reset_state(bs)
         fired = torch.zeros((bs, net.n), dtype=torch.bool, device=device)
@@ -3129,84 +3140,94 @@ def latency_vs_intensity_gpu(
 
     # ---------------- turn indices into ms ------------------------------
     lat_ms = first_idx.float() * dt
-    lat_ms[first_idx == -1] = float('nan')           # still silent
+    lat_ms[first_idx == -1] = float('nan')  # still silent
 
     lat_ms = lat_ms.view(n_int, n_cond, reps, net.n).cpu().numpy()
 
     # robust median that tolerates all-nan rows
     def robust_nanmedian(arr, axis):
         med = np.nanmedian(arr, axis=axis)
-        if np.isnan(med).all():          # completely silent intensity
+        if np.isnan(med).all():  # completely silent intensity
             return np.full(med.shape, np.nan)
         return med
 
-    med_A  = robust_nanmedian(lat_ms[:, 0], axis=(1, 2))
-    med_V  = robust_nanmedian(lat_ms[:, 1], axis=(1, 2))
+    med_A = robust_nanmedian(lat_ms[:, 0], axis=(1, 2))
+    med_V = robust_nanmedian(lat_ms[:, 1], axis=(1, 2))
     med_AV = robust_nanmedian(lat_ms[:, 2], axis=(1, 2))
 
     out = dict(I=list(intensities), A=med_A, V=med_V, AV=med_AV)
     if return_raw:  out["raw"] = lat_ms
     return out
 
-DISPARITIES = np.arange(-40, 45, 5)      # deg
-AUD_ANCHOR  = 90                         # deg
-PULSE_INT   = 0.4                        # stimulus strength
-PULSE_LEN   = 15                         # macro‑steps (≈15 ms)
-REPS        = 30                         # trials per Δ
+
+DISPARITIES = np.arange(-40, 45, 5)  # deg
+AUD_ANCHOR = 90  # deg
+PULSE_INT = 0.4  # stimulus strength
+PULSE_LEN = 15  # macro‑steps (≈15 ms)
+REPS = 30  # trials per Δ
+
 
 @torch.no_grad()
 def decode_location(net):
     """Return location (deg) of current MSI estimate."""
-    s_msi = net._latest_sMSI[0]                       # (n,)
-    raw   = torch.matmul(net.W_msi2out, s_msi) + net.b_out
-    idx   = torch.argmax(torch.clamp(raw, min=0)).item()
+    s_msi = net._latest_sMSI[0]  # (n,)
+    raw = torch.matmul(net.W_msi2out, s_msi) + net.b_out
+    idx = torch.argmax(torch.clamp(raw, min=0)).item()
     return index_to_location(idx, net.n, net.space_size)
+
 
 @torch.no_grad()
 def ventriloquism_bias_curve_gpu(
         net,
-        disparities      = range(-40, 45, 5),   # Δ  in deg
-        aud_deg          = 90,                  # anchor
-        intensity        = 0.4,
-        pulse_len        = 15,                  # macro-steps
-        reps             = 30,                  # trials / Δ
-        assay_substeps   = 25,                  # ← NEW
-        batch_cap        = 512                 # split if VRAM tight
+        disparities=range(-40, 45, 5),  # Δ  in deg
+        aud_deg=90,  # anchor
+        intensity=0.4,
+        pulse_len=15,  # macro-steps
+        reps=30,  # trials / Δ
+        assay_substeps=25,  # ← NEW
+        batch_cap=512  # split if VRAM tight
 ):
     # ------------ 1. freeze network & shorten dt ------------
     old_mode, old_plast, old_sub = net.training, net.allow_inhib_plasticity, net.n_substeps
-    net.eval();  net.allow_inhib_plasticity = False;  net.n_substeps = assay_substeps
+    net.eval();
+    net.allow_inhib_plasticity = False;
+    net.n_substeps = assay_substeps
 
     # ------------ 2. tensor-level stimulus build ------------
-    nΔ     = len(disparities)
-    B_tot  = nΔ * reps
-    T      = pulse_len + 5                # few silent frames first
-    xA     = torch.zeros((B_tot, T, net.n), device=net.device)
-    xV     = torch.zeros_like(xA)
+    nΔ = len(disparities)
+    B_tot = nΔ * reps
+    T = pulse_len + 5  # few silent frames first
+    xA = torch.zeros((B_tot, T, net.n), device=net.device)
+    xV = torch.zeros_like(xA)
 
-    base   = make_gaussian_vector_batch_gpu(
-                torch.tensor([location_to_index(aud_deg, net.n, net.space_size)],
-                             device=net.device),
-                net.n, net.sigma_in, net.device)[0] * intensity
+    base = make_gaussian_vector_batch_gpu(
+        torch.tensor([location_to_index(aud_deg, net.n, net.space_size)],
+                     device=net.device),
+        net.n, net.sigma_in, net.device)[0] * intensity
 
     for d_idx, Δ in enumerate(disparities):
         shift = int(round(Δ / (net.space_size / net.n)))
-        gV    = torch.roll(base, shifts=shift)
+        gV = torch.roll(base, shifts=shift)
         for r in range(reps):
-            b       = d_idx * reps + r
+            b = d_idx * reps + r
             xA[b, :pulse_len] = base
             xV[b, :pulse_len] = gV
 
     # ------------ 3. run in big (or chunked) batch ----------
     decoded = torch.empty(B_tot, device=net.device)
-    for bslice in range(0, B_tot, batch_cap):
-        sel = slice(bslice, bslice + batch_cap)
-        net.reset_state(sel.stop - sel.start)
+    for b0 in range(0, B_tot, batch_cap):
+        b1 = min(b0 + batch_cap, B_tot)
+        sel = slice(b0, b1)
+        bs = sel.stop - sel.start  # <— the critical line
+        net.reset_state(bs)
 
         for t in range(T):
             net.update_all_layers_batch(xA[sel, t], xV[sel, t])
 
-        s   = net._latest_sMSI                          # (B,n)
+        for t in range(T):
+            net.update_all_layers_batch(xA[sel, t], xV[sel, t])
+
+        s = net._latest_sMSI  # (B,n)
         raw = torch.matmul(net.W_msi2out, s.T) + net.b_out[:, None]
         idx = torch.argmax(torch.clamp(raw, min=0), dim=0)
         decoded[sel] = torch.tensor(
@@ -3215,26 +3236,25 @@ def ventriloquism_bias_curve_gpu(
 
     # ------------ 4. reshape & compute bias ----------------
     decoded = decoded.view(nΔ, reps).mean(1).cpu().numpy()
-    bias    = decoded - aud_deg
+    bias = decoded - aud_deg
 
     # ------------ 5. restore state & return ----------------
     net.training, net.allow_inhib_plasticity, net.n_substeps = old_mode, old_plast, old_sub
     return np.array(disparities), bias
 
 
-
-
-
 ########################################################
 #                MAIN TRAINING SCRIPT
 ########################################################
-from scipy.stats import binned_statistic 
+from scipy.stats import binned_statistic
 from statsmodels.nonparametric.smoothers_lowess import lowess
+
+
 def run_training(
         batch_size=256,
         n_unsup_epochs=15,
         sequences_per_unsup_epoch=1000,
-        n_readout_epochs=15,
+        n_readout_epochs=6,
         sequences_per_readout_epoch=3000
 ):
     """
@@ -3292,82 +3312,79 @@ def run_training(
     # net.g_GABA *= 0.3
 
     # after run_training() has given you net
-    res = latency_vs_intensity_gpu(
-        net,
-        intensities=np.geomspace(0.0004, 1.0, 45),
-        reps=64, jitter_radius=3)
-
-    # -------------------------------------------------
-    # 1) choose how to define the advantage
-    # -------------------------------------------------
-    A  = np.asarray(res["A"])    # Audio-only median latencies
-    V  = np.asarray(res["V"])    # Visual-only
-    AV = np.asarray(res["AV"])   # Audio + Visual
-    
-    # “ahead” = how many ms earlier AV fires than the faster unimodal channel
-    #   positive  → AV is earlier
-    #   zero      → ties the fastest unimodal latency
-    #   negative  → AV is *slower* (unlikely, but possible at high intensity)
-    # adv = np.minimum(A, V) - AV
-    
-    # If you’d rather use the mean of the two unimodal latencies:
-    adv = 0.5*(A + V) - AV
-    
-    # -------------------------------------------------
-    # 2) plot the advantage vs intensity
-    # -------------------------------------------------
-    I = np.asarray(res["I"])
-    
-    plt.figure(figsize=(4.5,3.5))
-    plt.semilogx(I, adv, 'o-k')
-    plt.axhline(0, ls=':', color='grey')
-    plt.gca().invert_xaxis()          # weakest intensity on the right? flip if you like
-    plt.xlabel("Intensity (log scale)")
-    plt.ylabel("AV advantage (ms)")
-    plt.title("How much earlier does AV fire?")
-    plt.tight_layout()
-    plt.show()
-
-
-
-    lat = latency_panel(net)            # prints chosen intensity
-    plot_latency_violin(lat)
-
-
-    inverse_effectiveness_check(net)
-
-    instrument_network(net)
-    ei_balance_probe(net)
-
-    offsets = list(range(21))
-    visualize_flash_sound_msi(net, offsets=offsets, T=50, D=10, loc=90)
+    # res = latency_vs_intensity_gpu(
+    #     net,
+    #     intensities=np.geomspace(0.0004, 1.0, 45),
+    #     reps=64, jitter_radius=3)
+    #
+    # # -------------------------------------------------
+    # # 1) choose how to define the advantage
+    # # -------------------------------------------------
+    # A = np.asarray(res["A"])  # Audio-only median latencies
+    # V = np.asarray(res["V"])  # Visual-only
+    # AV = np.asarray(res["AV"])  # Audio + Visual
+    #
+    # # “ahead” = how many ms earlier AV fires than the faster unimodal channel
+    # #   positive  → AV is earlier
+    # #   zero      → ties the fastest unimodal latency
+    # #   negative  → AV is *slower* (unlikely, but possible at high intensity)
+    # # adv = np.minimum(A, V) - AV
+    #
+    # # If you’d rather use the mean of the two unimodal latencies:
+    # adv = 0.5 * (A + V) - AV
+    #
+    # # -------------------------------------------------
+    # # 2) plot the advantage vs intensity
+    # # -------------------------------------------------
+    # I = np.asarray(res["I"])
+    #
+    # plt.figure(figsize=(4.5, 3.5))
+    # plt.semilogx(I, adv, 'o-k')
+    # plt.axhline(0, ls=':', color='grey')
+    # plt.gca().invert_xaxis()  # weakest intensity on the right? flip if you like
+    # plt.xlabel("Intensity (log scale)")
+    # plt.ylabel("AV advantage (ms)")
+    # plt.title("How much earlier does AV fire?")
+    # plt.tight_layout()
+    # plt.show()
+    #
+    # lat = latency_panel(net)  # prints chosen intensity
+    # plot_latency_violin(lat)
+    #
+    # inverse_effectiveness_check(net)
+    #
+    # instrument_network(net)
+    # ei_balance_probe(net)
+    #
+    # offsets = list(range(21))
+    # visualize_flash_sound_msi(net, offsets=offsets, T=50, D=10, loc=90)
 
     # Single-Pulse Probe
     net.reset_state()
-    with torch.no_grad():
-        print("\n=== Single-Pulse Probe Test (multiple steps) ===")
-        net.reset_state()
-
-        x_test = torch.zeros((net.batch_size, net.n), device=net.device)
-        idx = net.n // 2
-        x_test[:, idx] = 2.0
-
-        for step in range(3):
-            sA, sV, sM, sO, vdict = net.update_all_layers_batch(
-                x_test, x_test, record_voltages=True
-            )
-
-        dend_mean = net.v_dend_A.mean().item()
-        soma_mean = net.v_msi.mean().item()
-        print("Probe => dend V (A):", dend_mean,
-              "soma V:", soma_mean,
-              "MSI spike sum:", sM.sum().item())
+    # with torch.no_grad():
+    #     print("\n=== Single-Pulse Probe Test (multiple steps) ===")
+    #     net.reset_state()
+    #
+    #     x_test = torch.zeros((net.batch_size, net.n), device=net.device)
+    #     idx = net.n // 2
+    #     x_test[:, idx] = 2.0
+    #
+    #     for step in range(3):
+    #         sA, sV, sM, sO, vdict = net.update_all_layers_batch(
+    #             x_test, x_test, record_voltages=True
+    #         )
+    #
+    #     dend_mean = net.v_dend_A.mean().item()
+    #     soma_mean = net.v_msi.mean().item()
+    #     print("Probe => dend V (A):", dend_mean,
+    #           "soma V:", soma_mean,
+    #           "MSI spike sum:", sM.sum().item())
 
     # Compute spike rates on random sequences
-    rates0 = calculate_spike_rates_gpu(net, n_seq=50, stimulus_intensity=0.8, batch_size=batch_size)
-    print(f"Pre-train spike rates  |  A:{rates0['audio']:.3f}  "
-          f"V:{rates0['visual']:.3f}  MSI:{rates0['msi']:.3f}  "
-          f"OUT:{rates0['output']:.3f}\n")
+    # rates0 = calculate_spike_rates_gpu(net, n_seq=50, stimulus_intensity=0.8, batch_size=batch_size)
+    # print(f"Pre-train spike rates  |  A:{rates0['audio']:.3f}  "
+    #       f"V:{rates0['visual']:.3f}  MSI:{rates0['msi']:.3f}  "
+    #       f"OUT:{rates0['output']:.3f}\n")
     # ----------------------------------------------------------
     # NEW: EI‑balance / irregularity probe
     # ----------------------------------------------------------
@@ -3419,37 +3436,41 @@ def run_training(
     print(f"\nTotal training time: {total_time:.2f}s")
 
     Δ, bias = ventriloquism_bias_curve_gpu(net)
-    plt.plot(Δ, bias, 'o-k'); plt.xlabel("Δ (V–A)"); plt.ylabel("Bias"); plt.show()
-
+    plt.plot(Δ, bias, 'o-k');
+    plt.xlabel("Δ (V–A)");
+    plt.ylabel("Bias");
+    plt.show()
 
     # ────────────────────────────────────────────────────────────────────
     #  3.  SPATIAL-DISPARITY TUNING ASSAY  ← NEW SECTION
     # ────────────────────────────────────────────────────────────────────
-    disparities = range(-40, 45, 10)                    # –40 … +40 °
+    disparities = range(-40, 45, 10)  # –40 … +40 °
 
     res_base = spatial_disparity_tuning(
         net, disparities=disparities
     )
 
-    g_orig = net.g_GABA                                # weaken surround
+    g_orig = net.g_GABA  # weaken surround
     net.g_GABA *= 0.3
-    res_asd  = spatial_disparity_tuning(
+    res_asd = spatial_disparity_tuning(
         net, disparities=disparities
     )
-    net.g_GABA = g_orig    
+    net.g_GABA = g_orig
 
     # quick visual sanity-check (optional)
-    
+
     d = res_base['disparity']
-    plt.figure(figsize=(5,3))
+    plt.figure(figsize=(5, 3))
     plt.plot(d, res_base['response'], 'o', label='base')
-    plt.plot(d, res_base['fit'](d),   '-', lw=2)
-    plt.plot(d, res_asd['response'],  's', label='weak inh')
-    plt.plot(d, res_asd['fit'](d),    '--', lw=2)
+    plt.plot(d, res_base['fit'](d), '-', lw=2)
+    plt.plot(d, res_asd['response'], 's', label='weak inh')
+    plt.plot(d, res_asd['fit'](d), '--', lw=2)
     plt.xlabel('V–A disparity (deg)')
     plt.ylabel('MSI spike sum')
     plt.title('Spatial-disparity tuning')
-    plt.legend(); plt.tight_layout(); plt.show()
+    plt.legend();
+    plt.tight_layout();
+    plt.show()
 
     print(f"\nσ (baseline)   : {res_base['sigma']:.1f}°")
     print(f"σ (weak inh/ASD): {res_asd['sigma']:.1f}°")
@@ -3493,8 +3514,6 @@ if __name__ == "__main__":
 
     perturb_inhibition_sweep(net)
 
-
-
     # ── 1. Isolate the surround  ───────────────────────────
     net.isolate_surround(True)
 
@@ -3517,7 +3536,6 @@ if __name__ == "__main__":
     widths = list(range(1, 25, 2))
     resp = size_tuning_curve(net, widths)
     print("[ASSAY C] size-tuning (mid-patch widths) :", resp)
-
 
     # Flash-Sound test
     offsets = list(range(21))
